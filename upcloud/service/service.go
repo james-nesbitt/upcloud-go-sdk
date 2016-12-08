@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
+	"time"
+
 	"github.com/Jalle19/upcloud-go-sdk/upcloud"
 	"github.com/Jalle19/upcloud-go-sdk/upcloud/client"
 	"github.com/Jalle19/upcloud-go-sdk/upcloud/request"
-	"time"
 )
 
 // Service represents the API service. The specified client is used to communicate with the API
@@ -181,6 +183,58 @@ func (s *Service) WaitForServerState(r *request.WaitForServerStateRequest) (*upc
 			return nil, fmt.Errorf("Timeout reached while waiting for server to enter state \"%s\"", r.DesiredState)
 		}
 	}
+}
+
+func (s *Service) WaitForServerStateContext(r *request.WaitForServerStateRequestContext) (*upcloud.ServerDetails, error) {
+	attempts := 0
+	sleepDuration := time.Second * 5
+
+	// Create a channel that will tick periodically with the sleep duration time
+	ticker := time.NewTicker(sleepDuration).C // Technically this could also be an argument to control durations
+	// Create a new cancellable context wrapper over the request context
+	ctx, cancel := context.WithCancel(r.Context)
+	/**
+	 * make sure that we cancel the context that we created, which is usefull
+	 * for the case where a "tick" discovered a successful state match.  It is
+	 * recommended to always run the cancel, even if Done has been closed, so
+	 * we do it for all cases in a defer, instead of in the below select.
+	 */	
+	defer cancel()
+
+	var serverDetails *upcloud.ServerDetails
+	var err error
+
+	Finish:
+
+		for {
+			select {
+			case <-ticker:
+				attempts++
+
+				serverDetails, err = s.GetServerDetails(&request.GetServerDetailsRequest{
+					UUID: r.UUID,
+				})
+
+				if err != nil {
+					break Finish
+				}
+
+				// Either wait for the server to enter the desired state or wait for it to leave the undesired state
+				if r.DesiredState != "" && serverDetails.State == r.DesiredState {
+					break Finish
+				} else if r.UndesiredState != "" && serverDetails.State != r.UndesiredState {
+					break Finish
+				}
+
+			case <-ctx.Done():
+				err = fmt.Errorf("Timeout reached while waiting for server to enter state \"%s\"", r.DesiredState)		
+
+			default:
+				fmt.Println("waiting for tick or done")
+			}
+		}
+
+	return serverDetails, err
 }
 
 // StartServer starts the specified server

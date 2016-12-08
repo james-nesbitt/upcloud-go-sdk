@@ -1,6 +1,7 @@
 package request
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"github.com/Jalle19/upcloud-go-sdk/upcloud"
@@ -81,6 +82,10 @@ type WaitForServerStateRequest struct {
 	DesiredState   string
 	UndesiredState string
 	Timeout        time.Duration
+}
+type WaitForServerStateRequestContext struct {
+	WaitForServerStateRequest
+	Context        context.Context
 }
 
 // StartServerRequest represents a request to start a server
